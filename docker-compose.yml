@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latency-metrics-backend
+    environment:
+      - PORT=5002
+      - HOST=0.0.0.0
+      # Database configuration - can be overridden by .env file
+      - DB_HOST=${DB_HOST:-103.253.20.30}
+      - DB_PORT=${DB_PORT:-26001}
+      - DB_NAME=${DB_NAME:-robot-workflow-user-log-test}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      # API tokens for fetching data - should be set in .env file
+      - AUTH_TOKEN=${AUTH_TOKEN:-}
+      - MONITOR_TOKEN=${MONITOR_TOKEN:-}
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: latency-metrics-frontend
+    ports:
+      - "26003:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+# volumes:
+#   # Add volumes if needed for data persistence

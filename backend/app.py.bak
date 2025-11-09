@@ -1,0 +1,112 @@
+"""
+Simple Flask API server for UI to fetch metrics.
+Run with: python api_server.py
+"""
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from datetime import date, timedelta
+import logging
+
+from evaluate import (
+    refresh_ui_metrics,
+    get_last_7_days_metrics,
+    get_daily_metrics_from_latency_table
+)
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@app.route('/api/metrics/last-7-days', methods=['GET'])
+def get_last_7_days():
+    """Get metrics for the last 7 days."""
+    bot_id = request.args.get('bot_id', type=int)
+    try:
+        # Use refresh_ui_metrics to get the full response with date_range
+        results = refresh_ui_metrics(bot_id)
+        return jsonify({
+            "status": "success",
+            "data": results
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting last 7 days metrics: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/metrics/refresh', methods=['POST'])
+def refresh_metrics():
+    """Refresh and recalculate metrics from database."""
+    data = request.get_json() or {}
+    bot_id = data.get('bot_id')
+    
+    try:
+        results = refresh_ui_metrics(bot_id)
+        return jsonify({
+            "status": "success",
+            "data": results
+        }), 200
+    except Exception as e:
+        logger.error(f"Error refreshing metrics: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+
+
+@app.route('/api/metrics/daily', methods=['GET'])
+def get_daily_metrics():
+    """Get daily metrics for a date range."""
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    bot_id = request.args.get('bot_id', type=int)
+    
+    try:
+        if start_date_str and end_date_str:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            # Default to last 7 days
+            end_date = date.today()
+            start_date = end_date - timedelta(days=6)
+        
+        metrics = get_daily_metrics_from_latency_table(start_date, end_date, bot_id)
+        
+        return jsonify({
+            "status": "success",
+            "data": metrics
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting daily metrics: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint."""
+    return jsonify({"status": "healthy"}), 200
+
+
+if __name__ == '__main__':
+    import os
+    # Use port from environment variable or default to 5001
+    port = int(os.environ.get('PORT', 5001))
+    print("Starting API server on http://localhost:{}".format(port))
+    print("Endpoints:")
+    print("  GET  /api/metrics/last-7-days?bot_id=<optional>")
+    print("  POST /api/metrics/refresh")
+    print("  GET  /api/metrics/daily?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&bot_id=<optional>")
+    print("  GET  /health")
+    print("\nOpen dashboard.html in your browser to view the metrics!")
+    app.run(host='0.0.0.0', port=port, debug=True)
+

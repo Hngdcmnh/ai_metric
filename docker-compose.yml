@@ -16,8 +16,7 @@ services:
       # API tokens for fetching data - should be set in .env file
       - AUTH_TOKEN=${AUTH_TOKEN:-}
       - MONITOR_TOKEN=${MONITOR_TOKEN:-}
-    ports:
-      - "5002:5002"
+    network_mode: host
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
@@ -31,8 +30,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: latency-metrics-frontend
-    ports:
-      - "26003:80"
+    network_mode: host
     depends_on:
       backend:
         condition: service_healthy

@@ -483,9 +483,13 @@
                         <h3>
                             <span>Intent accuracy</span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <button class="detail-btn" onclick="updateIntentAccuracy3Days()" id="updateIntentAccBtn" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
+                                <input type="date" id="intentAccuracyDateInput" class="date-input" style="font-size: 11px; padding: 4px 8px;">
+                                <button class="detail-btn" onclick="updateIntentAccuracyForDate()" id="updateIntentAccBtn" style="font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
                                     <span>🔄</span>
-                                    <span>Update 3 days</span>
+                                    <span>Update data</span>
+                                </button>
+                                <button class="detail-btn" onclick="showIntentAccuracyDetail()" style="font-size: 11px;">
+                                    detail
                                 </button>
                             </div>
                         </h3>
@@ -605,9 +609,65 @@
         </div>
     </div>
 
+    <!-- Modal for Intent Accuracy Detail -->
+    <div id="intentAccuracyDetailModal" class="modal">
+        <div class="modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h2>📊 Intent Accuracy Detail</h2>
+                <button class="close-btn" onclick="closeIntentAccuracyDetail()">&times;</button>
+            </div>
+            <div style="padding: 20px;">
+                <div style="margin-bottom: 20px; font-size: 16px; font-weight: 600;">
+                    <span id="intentAccuracyDetailDate"></span>
+                </div>
+                <div style="margin-bottom: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+                    <div style="margin-bottom: 10px;">
+                        <strong>Tổng số record cần gán nhãn: </strong>
+                        <span id="intentAccuracyTotalWithIntent" style="font-size: 18px; color: #667eea;">0</span>
+                    </div>
+                    <div>
+                        <strong>Số record đã gán nhãn: </strong>
+                        <span id="intentAccuracyTotalCount" style="font-size: 18px; color: #28a745;">0</span>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <h3 style="margin-bottom: 15px;">Chi tiết:</h3>
+                    <div id="intentAccuracyDetailTableContainer" style="max-height: 600px; overflow-y: auto;">
+                        <table class="modal-table">
+                            <thead>
+                                <tr>
+                                    <th>Message ID</th>
+                                    <th>Content</th>
+                                    <th>Corrected Content</th>
+                                    <th>Intent</th>
+                                    <th>Corrected Intent</th>
+                                    <th>WER</th>
+                                    <th>Conversation ID</th>
+                                    <th>Date Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="intentAccuracyDetailTableBody">
+                                <!-- Data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let learnLatencyChart = null;
         let learnIntentAccuracyChart = null;
+        
+        // Set default date to today for intent accuracy date input
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('intentAccuracyDateInput');
+            if (dateInput) {
+                const today = new Date();
+                dateInput.value = today.toISOString().split('T')[0];
+            }
+        });
         let learnDataCache = null; // Cache data for modal
         // API server URL
         const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
@@ -1288,20 +1348,103 @@
             }
         }
 
-        async function updateIntentAccuracy3Days() {
+        async function showIntentAccuracyDetail() {
+            const modal = document.getElementById('intentAccuracyDetailModal');
+            const dateInput = document.getElementById('intentAccuracyDateInput');
+            const selectedDate = dateInput.value;
+            
+            if (!selectedDate) {
+                alert('Vui lòng chọn ngày');
+                return;
+            }
+            
+            try {
+                // Show modal with loading state
+                modal.style.display = 'block';
+                document.getElementById('intentAccuracyDetailDate').textContent = `Ngày: ${selectedDate}`;
+                document.getElementById('intentAccuracyTotalWithIntent').textContent = '...';
+                document.getElementById('intentAccuracyTotalCount').textContent = '...';
+                document.getElementById('intentAccuracyDetailTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center;">Đang tải...</td></tr>';
+                
+                const response = await fetch(`${API_BASE_URL}/api/metrics/intent-accuracy-detail?date=${selectedDate}`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const data = result.data;
+                    
+                    // Update total counts
+                    document.getElementById('intentAccuracyTotalWithIntent').textContent = data.total_with_intent || 0;
+                    document.getElementById('intentAccuracyTotalCount').textContent = data.total_with_corrected_intent || 0;
+                    
+                    // Update table
+                    const tbody = document.getElementById('intentAccuracyDetailTableBody');
+                    if (data.incorrect_records && data.incorrect_records.length > 0) {
+                        tbody.innerHTML = data.incorrect_records.map(record => `
+                            <tr>
+                                <td>${record.message_id || '-'}</td>
+                                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(record.content || '').replace(/"/g, '&quot;')}">${record.content || '-'}</td>
+                                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(record.corrected_content || '').replace(/"/g, '&quot;')}">${record.corrected_content || '-'}</td>
+                                <td>${record.intent || '-'}</td>
+                                <td>${record.corrected_intent || '-'}</td>
+                                <td>${record.wer !== null && record.wer !== undefined ? record.wer.toFixed(4) : '-'}</td>
+                                <td>${record.conversation_id || '-'}</td>
+                                <td>${record.date_time ? new Date(record.date_time).toLocaleString('vi-VN') : '-'}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Không có record nào có intent khác corrected_intent</td></tr>';
+                    }
+                } else {
+                    document.getElementById('intentAccuracyDetailTableBody').innerHTML = `<tr><td colspan="8" style="text-align: center; color: red;">Lỗi: ${result.message}</td></tr>`;
+                }
+            } catch (error) {
+                console.error('Error loading intent accuracy detail:', error);
+                document.getElementById('intentAccuracyDetailTableBody').innerHTML = `<tr><td colspan="8" style="text-align: center; color: red;">Lỗi: ${error.message}</td></tr>`;
+            }
+        }
+
+        function closeIntentAccuracyDetail() {
+            const modal = document.getElementById('intentAccuracyDetailModal');
+            modal.style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const learnModal = document.getElementById('learnDetailModal');
+            const intentModal = document.getElementById('intentAccuracyDetailModal');
+            if (event.target === learnModal) {
+                learnModal.style.display = 'none';
+            }
+            if (event.target === intentModal) {
+                intentModal.style.display = 'none';
+            }
+        }
+
+        async function updateIntentAccuracyForDate() {
             const updateBtn = document.getElementById('updateIntentAccBtn');
+            const dateInput = document.getElementById('intentAccuracyDateInput');
             const errorContainer = document.getElementById('errorContainer');
+            
+            const selectedDate = dateInput.value;
+            
+            if (!selectedDate) {
+                errorContainer.innerHTML = '<div class="error">❌ Vui lòng chọn ngày</div>';
+                return;
+            }
             
             try {
                 updateBtn.disabled = true;
                 updateBtn.innerHTML = '<span>⏳</span><span>Đang cập nhật...</span>';
                 errorContainer.innerHTML = '';
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/update-intent-accuracy-3days`, {
+                const response = await fetch(`${API_BASE_URL}/api/metrics/update-intent-accuracy`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        date: selectedDate
+                    })
                 });
                 
                 const result = await response.json();
@@ -1311,10 +1454,8 @@
                     // Reload intent accuracy metrics after successful update
                     setTimeout(() => {
                         loadIntentAccuracyMetrics();
-                        // Also reload yesterday's intent accuracy
-                        const yesterday = new Date();
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        loadIntentAccuracy(yesterday.toISOString().split('T')[0]);
+                        // Also reload the selected date's intent accuracy
+                        loadIntentAccuracy(selectedDate);
                     }, 1000);
                 } else {
                     errorContainer.innerHTML = `<div class="error">❌ Lỗi: ${result.message}</div>`;
@@ -1324,7 +1465,7 @@
                 errorContainer.innerHTML = `<div class="error">❌ Lỗi: ${error.message}</div>`;
             } finally {
                 updateBtn.disabled = false;
-                updateBtn.innerHTML = '<span>🔄</span><span>Update 3 days</span>';
+                updateBtn.innerHTML = '<span>🔄</span><span>Update data</span>';
             }
         }
 

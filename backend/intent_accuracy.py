@@ -161,6 +161,10 @@ def save_intent_accuracy_to_db(
                 # Calculate WER
                 wer = calculate_wer(corrected_content, content)
                 
+                # Map corrected_intent before saving
+                api_corrected_intent = user.get("corrected_intent")
+                mapped_corrected_intent = map_corrected_intent(api_corrected_intent) if api_corrected_intent else None
+                
                 records.append((
                     str(user_id),
                     str(bot_id),
@@ -174,7 +178,7 @@ def save_intent_accuracy_to_db(
                     str(conversation_id),
                     message_id,
                     pair.get("context_question"),  # Merged BOT content before USER
-                    user.get("corrected_intent"),  # Corrected intent from USER message
+                    mapped_corrected_intent,  # Corrected intent from USER message (mapped)
                     wer  # WER value
                 ))
             
@@ -434,6 +438,45 @@ def fetch_message_data_from_api(message_id: str, api_url: str = None, api_token:
         return None
 
 
+def map_corrected_intent(api_intent: str) -> Optional[str]:
+    """
+    Map corrected_intent from API to database value.
+    
+    Mapping rules:
+    - correct -> intent_true
+    - wrong -> intent_false
+    - irrelevant -> fallback
+    - silent -> silent
+    
+    Args:
+        api_intent: Intent value from API
+    
+    Returns:
+        Mapped intent value, or None if not found
+    """
+    if not api_intent:
+        return None
+    
+    mapping = {
+        "correct": "intent_true",
+        "wrong": "intent_false",
+        "irrelevant": "fallback",
+        "silent": "silent"
+    }
+    
+    # Case-insensitive mapping
+    api_intent_lower = api_intent.lower().strip()
+    mapped_intent = mapping.get(api_intent_lower)
+    
+    if mapped_intent:
+        logger.debug(f"Mapped intent: {api_intent} -> {mapped_intent}")
+        return mapped_intent
+    else:
+        # If not in mapping, return original value (case preserved)
+        logger.debug(f"Intent not in mapping, using original: {api_intent}")
+        return api_intent
+
+
 def update_intent_accuracy_with_wer(message_id: str, message_data: Dict[str, Any]) -> bool:
     """
     Update intent_acc_metric record with WER and data from API.
@@ -473,11 +516,14 @@ def update_intent_accuracy_with_wer(message_id: str, message_data: Dict[str, Any
             api_corrected_content = message_data.get("corrected_content") or ""
             api_corrected_intent = message_data.get("corrected_intent")
             
+            # Map corrected_intent before saving to DB
+            mapped_corrected_intent = map_corrected_intent(api_corrected_intent) if api_corrected_intent else None
+            
             # Calculate WER: so sánh corrected_content (từ API) với content gốc (từ DB)
             wer = calculate_wer(api_corrected_content, original_content)
             
             # Update record
-            # Chỉ update corrected_content, corrected_intent và wer
+            # Chỉ update corrected_content, corrected_intent (đã map) và wer
             # Không thay đổi content gốc
             update_query = """
                 UPDATE intent_acc_metric 
@@ -489,13 +535,13 @@ def update_intent_accuracy_with_wer(message_id: str, message_data: Dict[str, Any
             
             cur.execute(update_query, (
                 api_corrected_content,
-                api_corrected_intent,
+                mapped_corrected_intent,
                 wer,
                 message_id
             ))
             
             conn.commit()
-            logger.debug(f"Updated message_id {message_id} with WER={wer}")
+            logger.debug(f"Updated message_id {message_id} with WER={wer}, corrected_intent={mapped_corrected_intent}")
             return True
             
     except Exception as e:
@@ -660,6 +706,93 @@ def update_intent_accuracy_last_3_days() -> Dict[str, Any]:
             "updated": 0,
             "failed": 0
         }
+
+
+def get_intent_accuracy_detail_for_date(target_date: date) -> Dict[str, Any]:
+    """
+    Get detailed intent accuracy information for a specific date.
+    
+    Args:
+        target_date: Target date to get detail for
+    
+    Returns:
+        Dictionary containing:
+        - total_with_intent: Total records with intent not null (records need labeling)
+        - total_with_corrected_intent: Total records with corrected_intent
+        - incorrect_records: List of records where intent != corrected_intent
+    """
+    conn = get_db_connection()
+    
+    try:
+        with conn.cursor() as cur:
+            # Count total records with intent not null (records need labeling)
+            cur.execute("""
+                SELECT COUNT(*) 
+                FROM intent_acc_metric 
+                WHERE DATE(date_time) = %s 
+                AND intent IS NOT NULL
+            """, (target_date,))
+            total_with_intent = cur.fetchone()[0]
+            
+            # Count total records with corrected_intent
+            cur.execute("""
+                SELECT COUNT(*) 
+                FROM intent_acc_metric 
+                WHERE DATE(date_time) = %s 
+                AND corrected_intent IS NOT NULL
+            """, (target_date,))
+            total_with_corrected_intent = cur.fetchone()[0]
+            
+            # Get records where intent != corrected_intent
+            cur.execute("""
+                SELECT 
+                    message_id,
+                    content,
+                    corrected_content,
+                    intent,
+                    corrected_intent,
+                    wer,
+                    date_time,
+                    conversation_id
+                FROM intent_acc_metric 
+                WHERE DATE(date_time) = %s 
+                AND corrected_intent IS NOT NULL
+                AND intent IS NOT NULL
+                AND intent != corrected_intent
+                ORDER BY date_time DESC
+            """, (target_date,))
+            
+            rows = cur.fetchall()
+            incorrect_records = []
+            for row in rows:
+                incorrect_records.append({
+                    "message_id": row[0],
+                    "content": row[1] or "",
+                    "corrected_content": row[2] or "",
+                    "intent": row[3] or "",
+                    "corrected_intent": row[4] or "",
+                    "wer": float(row[5]) if row[5] is not None else None,
+                    "date_time": row[6].isoformat() if row[6] else None,
+                    "conversation_id": row[7] or ""
+                })
+            
+            return {
+                "total_with_intent": total_with_intent,
+                "total_with_corrected_intent": total_with_corrected_intent,
+                "incorrect_records": incorrect_records,
+                "date": target_date.isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting intent accuracy detail: {e}")
+        return {
+            "total_with_intent": 0,
+            "total_with_corrected_intent": 0,
+            "incorrect_records": [],
+            "date": target_date.isoformat()
+        }
+    finally:
+        conn.close()
 
 
 def get_intent_accuracy_for_date(target_date: date) -> Optional[float]:

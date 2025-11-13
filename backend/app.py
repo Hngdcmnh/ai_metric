@@ -18,6 +18,7 @@ from evaluate import (
 from intent_accuracy import (
     fetch_and_import_intent_accuracy,
     get_intent_accuracy_for_date,
+    get_intent_accuracy_detail_for_date,
     update_intent_accuracy_last_3_days,
     update_intent_accuracy_for_date,
     get_intent_accuracy_metrics_for_date_range
@@ -238,6 +239,46 @@ def get_intent_accuracy():
         }), 500
 
 
+@app.route('/api/metrics/update-intent-accuracy', methods=['POST'])
+def update_intent_accuracy():
+    """Update intent accuracy data for a specific date."""
+    data = request.get_json() or {}
+    target_date_str = data.get('date')
+    
+    if not target_date_str:
+        return jsonify({
+            "status": "error",
+            "message": "Date is required"
+        }), 400
+    
+    try:
+        target_date = date.fromisoformat(target_date_str)
+        logger.info(f"Update intent accuracy request for date: {target_date_str}")
+        result = update_intent_accuracy_for_date(target_date)
+        
+        return jsonify({
+            "status": result.get("status", "success"),
+            "message": result.get("message", "Update completed"),
+            "data": {
+                "total_message_ids": result.get("total_message_ids", 0),
+                "updated": result.get("updated", 0),
+                "failed": result.get("failed", 0),
+                "date": result.get("date", target_date_str)
+            }
+        }), 200
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Invalid date format: {str(e)}"
+        }), 400
+    except Exception as e:
+        logger.error(f"Error updating intent accuracy: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
 @app.route('/api/metrics/update-intent-accuracy-3days', methods=['POST'])
 def update_intent_accuracy_3days():
     """Update intent accuracy data for the last 3 days."""
@@ -253,6 +294,40 @@ def update_intent_accuracy_3days():
         
     except Exception as e:
         logger.error(f"Error updating intent accuracy for last 3 days: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/metrics/intent-accuracy-detail', methods=['GET'])
+def get_intent_accuracy_detail():
+    """Get detailed intent accuracy information for a specific date."""
+    target_date_str = request.args.get('date')
+    
+    if not target_date_str:
+        return jsonify({
+            "status": "error",
+            "message": "Date is required"
+        }), 400
+    
+    try:
+        target_date = date.fromisoformat(target_date_str)
+        logger.info(f"Get intent accuracy detail request for date: {target_date_str}")
+        detail = get_intent_accuracy_detail_for_date(target_date)
+        
+        return jsonify({
+            "status": "success",
+            "data": detail
+        }), 200
+        
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Invalid date format: {str(e)}"
+        }), 400
+    except Exception as e:
+        logger.error(f"Error getting intent accuracy detail: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)

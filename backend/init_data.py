@@ -9,7 +9,9 @@ from datetime import date, timedelta
 from evaluate import daily_job, logger
 
 # Configuration
-AUTH_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMDE5NTFlOTgtZTMzOC03NzRjLWEzM2ItNjdjNWNlOWQ5NzQ2IiwicGhvbmUiOiIwODY5NjEzMTA4IiwianRpIjoiNEpkUGh1OVd3WHYySkp1Ym1sTHI1XzAxOTUxZTk4LWUzMzgtNzc0Yy1hMzNiLTY3YzVjZTlkOTc0NiIsImF1dGhvcml0aWVzIjpbIlVTRVIiXSwiaWF0IjoxNzYyMzM1Mzg5LCJleHAiOjE3NjMxOTkzODl9.BWI8Th5p2P3pNv8M5YcUs7wZqF_prExsXdj74h4oXVs"
+# Note: AUTH_TOKEN is the short token (b1812cb7-2513-408b-bb22-d9f91b099fbd) for conversations/ids
+# MONITOR_TOKEN is for monitor API (response_time, conversations)
+AUTH_TOKEN = "b1812cb7-2513-408b-bb22-d9f91b099fbd"
 MONITOR_TOKEN = "dd4e758e-51ed-d9fb-7b25-1e4f704f4cea"
 
 def init_data(days=3):

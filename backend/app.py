@@ -17,7 +17,9 @@ from evaluate import (
 
 from intent_accuracy import (
     fetch_and_import_intent_accuracy,
-    get_intent_accuracy_for_date
+    get_intent_accuracy_for_date,
+    update_intent_accuracy_last_3_days,
+    get_intent_accuracy_metrics_for_date_range
 )
 
 app = Flask(__name__)
@@ -229,6 +231,62 @@ def get_intent_accuracy():
         }), 400
     except Exception as e:
         logger.error(f"Error getting intent accuracy: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/metrics/update-intent-accuracy-3days', methods=['POST'])
+def update_intent_accuracy_3days():
+    """Update intent accuracy data for the last 3 days."""
+    try:
+        logger.info("Update intent accuracy for last 3 days request received")
+        result = update_intent_accuracy_last_3_days()
+        
+        return jsonify({
+            "status": result.get("status", "success"),
+            "message": result.get("message", "Update completed"),
+            "data": result
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error updating intent accuracy for last 3 days: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/metrics/intent-accuracy-metrics', methods=['GET'])
+def get_intent_accuracy_metrics():
+    """Get intent accuracy metrics for a date range."""
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    try:
+        if start_date_str and end_date_str:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            # Default to last 7 days
+            end_date = date.today()
+            start_date = end_date - timedelta(days=6)
+        
+        metrics = get_intent_accuracy_metrics_for_date_range(start_date, end_date)
+        
+        return jsonify({
+            "status": "success",
+            "data": metrics
+        }), 200
+        
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Invalid date format: {str(e)}"
+        }), 400
+    except Exception as e:
+        logger.error(f"Error getting intent accuracy metrics: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)

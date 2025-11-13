@@ -466,7 +466,7 @@ def daily_job(auth_token: str = None, monitor_token: str = None, target_date: Op
     This function runs once per day at 2:00 AM and fetches data from the previous day.
     
     Args:
-        auth_token: Authorization Bearer token for conversations API (optional, uses hardcoded token)
+        auth_token: Token for conversations/ids API (optional, uses hardcoded token)
         monitor_token: Token for monitor API (optional, uses hardcoded token)
         target_date: Optional target date. If None, uses yesterday's date
         metric_type: Type of metric to save (default: "learn")
@@ -474,7 +474,8 @@ def daily_job(auth_token: str = None, monitor_token: str = None, target_date: Op
     logger.info(f"Starting daily job for type: {metric_type}...")
     
     # Use hardcoded tokens if not provided
-    auth_token = auth_token or AUTH_TOKEN
+    # Note: get_conversation_ids uses fixed_token internally (AUTH_TOKEN)
+    # get_response_times uses MONITOR_TOKEN
     monitor_token = monitor_token or MONITOR_TOKEN
     
     # Get target date (default to yesterday)
@@ -487,8 +488,9 @@ def daily_job(auth_token: str = None, monitor_token: str = None, target_date: Op
     
     try:
         # Step 1: Fetch conversation IDs for the selected date
+        # get_conversation_ids uses fixed_token internally (b1812cb7-2513-408b-bb22-d9f91b099fbd)
         logger.info(f"Fetching conversation IDs for {date_str} (date: {target_date})...")
-        conversation_ids = get_conversation_ids(date_str, date_str, auth_token)
+        conversation_ids = get_conversation_ids(date_str, date_str)
         logger.info(f"Found {len(conversation_ids)} conversations")
         
         # Step 2: Fetch response times and collect data
@@ -713,8 +715,8 @@ def run_scheduler(auth_token: str, monitor_token: str, run_time: str = "02:00", 
     Daily job will fetch data from the previous day and save to latency_metric table.
     
     Args:
-        auth_token: Authorization Bearer token for conversations API
-        monitor_token: Token for monitor API
+        auth_token: Token for conversations/ids API
+        monitor_token: Token for monitor API (response_time, conversations)
         run_time: Time to run daily job in HH:MM format (default: "02:00")
         metric_type: Type of metric to save (default: "learn")
     """
@@ -737,8 +739,8 @@ def calculate_percentiles(response_times: List[float], percentile: float) -> flo
 
 
 # Hardcoded tokens
-AUTH_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMDE5NTFlOTgtZTMzOC03NzRjLWEzM2ItNjdjNWNlOWQ5NzQ2IiwicGhvbmUiOiIwODY5NjEzMTA4IiwianRpIjoiNEpkUGh1OVd3WHYySkp1Ym1sTHI1XzAxOTUxZTk4LWUzMzgtNzc0Yy1hMzNiLTY3YzVjZTlkOTc0NiIsImF1dGhvcml0aWVzIjpbIlVTRVIiXSwiaWF0IjoxNzYyMzM1Mzg5LCJleHAiOjE3NjMxOTkzODl9.BWI8Th5p2P3pNv8M5YcUs7wZqF_prExsXdj74h4oXVs"
-MONITOR_TOKEN = "dd4e758e-51ed-d9fb-7b25-1e4f704f4cea"
+AUTH_TOKEN = "b1812cb7-2513-408b-bb22-d9f91b099fbd"  # Token cho conversations/ids API
+MONITOR_TOKEN = "dd4e758e-51ed-d9fb-7b25-1e4f704f4cea"  # Token cho monitor API (response_time, conversations)
 
 def get_conversation_ids(start_date: str, end_date: str, token: str = None) -> List[int]:
     """
@@ -747,19 +749,21 @@ def get_conversation_ids(start_date: str, end_date: str, token: str = None) -> L
     Args:
         start_date: Start date in format DD/MM/YYYY
         end_date: End date in format DD/MM/YYYY
-        token: Authorization Bearer token (optional, uses hardcoded token if not provided)
+        token: Token parameter (optional, uses hardcoded token if not provided)
     
     Returns:
         List of conversation IDs
     """
     url = "https://robot-api.hacknao.edu.vn/web/admin/api/conversations/ids"
+    # Use fixed token: b1812cb7-2513-408b-bb22-d9f91b099fbd
+    fixed_token = "b1812cb7-2513-408b-bb22-d9f91b099fbd"
     params = {
         "startDate": start_date,
-        "endDate": end_date
+        "endDate": end_date,
+        "token": token or fixed_token
     }
     headers = {
-        "accept": "*/*",
-        "Authorization": f"Bearer {token or AUTH_TOKEN}"
+        "accept": "*/*"
     }
     
     response = requests.get(url, params=params, headers=headers)
@@ -772,20 +776,20 @@ def get_conversation_ids(start_date: str, end_date: str, token: str = None) -> L
         raise Exception(f"API error: {data.get('message', 'Unknown error')}")
 
 
-def get_response_times(conversation_id: int, monitor_token: str = None) -> List[Dict[str, Any]]:
+def get_response_times(conversation_id: int, token: str = None) -> List[Dict[str, Any]]:
     """
     Step 2: Request API to get server response time and LLM response time for a conversation.
     
     Args:
         conversation_id: The conversation ID
-        monitor_token: Token for monitor API (optional, uses hardcoded token if not provided)
+        token: Token for monitor API (optional, uses MONITOR_TOKEN if not provided)
     
     Returns:
         List of response time data dictionaries
     """
     url = "https://robot-api.hacknao.edu.vn/robot/api/v1/monitor/conversations/response_time"
     params = {
-        "token": monitor_token or MONITOR_TOKEN,
+        "token": token or MONITOR_TOKEN,
         "conversation_id": conversation_id
     }
     
@@ -843,7 +847,7 @@ def calculate_response_time_percentiles(
     start_date: str,
     end_date: str,
     auth_token: str,
-    monitor_token: str,
+    monitor_token: str = None,
     output_file: str | None = None,
     output_dir: str = ".",
     output_prefix: str = "response_times"
@@ -854,15 +858,17 @@ def calculate_response_time_percentiles(
     Args:
         start_date: Start date in format DD/MM/YYYY
         end_date: End date in format DD/MM/YYYY
-        auth_token: Authorization Bearer token for conversations API
-        monitor_token: Token for monitor API
+        auth_token: Token for API
+        monitor_token: Token for API (optional, same as auth_token)
     
     Returns:
         Dictionary containing p90 and p99 values for both metrics
     """
     # Step 1: Get list of conversation_ids
+    # Note: get_conversation_ids uses fixed_token internally (b1812cb7-2513-408b-bb22-d9f91b099fbd)
+    # auth_token parameter is ignored
     print("Step 1: Fetching conversation IDs...")
-    conversation_ids = get_conversation_ids(start_date, end_date, auth_token)
+    conversation_ids = get_conversation_ids(start_date, end_date)
     print(f"Found {len(conversation_ids)} conversations")
     
     # Step 2: Collect all response times
@@ -871,6 +877,8 @@ def calculate_response_time_percentiles(
     llm_response_times = []
     raw_rows: List[Dict[str, Any]] = []
     
+    # Use MONITOR_TOKEN for response_time API
+    monitor_token = monitor_token or auth_token or MONITOR_TOKEN
     for idx, conv_id in enumerate(conversation_ids, 1):
         try:
             response_data = get_response_times(conv_id, monitor_token)
@@ -957,7 +965,9 @@ if __name__ == "__main__":
     import sys
     
     # Configuration
-    AUTH_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiMDE5NTFlOTgtZTMzOC03NzRjLWEzM2ItNjdjNWNlOWQ5NzQ2IiwicGhvbmUiOiIwODY5NjEzMTA4IiwianRpIjoiNEpkUGh1OVd3WHYySkp1Ym1sTHI1XzAxOTUxZTk4LWUzMzgtNzc0Yy1hMzNiLTY3YzVjZTlkOTc0NiIsImF1dGhvcml0aWVzIjpbIlVTRVIiXSwiaWF0IjoxNzYyMzM1Mzg5LCJleHAiOjE3NjMxOTkzODl9.BWI8Th5p2P3pNv8M5YcUs7wZqF_prExsXdj74h4oXVs"
+    # Note: AUTH_TOKEN is the short token (b1812cb7-2513-408b-bb22-d9f91b099fbd) for conversations/ids
+    # MONITOR_TOKEN is for monitor API (response_time, conversations)
+    AUTH_TOKEN = "b1812cb7-2513-408b-bb22-d9f91b099fbd"
     MONITOR_TOKEN = "dd4e758e-51ed-d9fb-7b25-1e4f704f4cea"
     
     if len(sys.argv) > 1:
@@ -968,7 +978,7 @@ if __name__ == "__main__":
             logger.info("Starting scheduler mode...")
             run_time = sys.argv[2] if len(sys.argv) > 2 else "02:00"
             metric_type = sys.argv[3] if len(sys.argv) > 3 else "learn"
-            run_scheduler(AUTH_TOKEN, MONITOR_TOKEN, run_time, metric_type=metric_type)
+            run_scheduler(AUTH_TOKEN, MONITOR_TOKEN, run_time=run_time, metric_type=metric_type)
         
         elif command == "daily":
             # Run daily job manually

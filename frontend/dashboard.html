@@ -671,7 +671,7 @@
         let learnDataCache = null; // Cache data for modal
         // API server URL
         const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:5002' 
+            ? 'http://localhost:5002/api' 
             : '/api';
 
         // Set report date (yesterday)
@@ -698,10 +698,10 @@
                 contentContainer.style.display = 'none';
                 errorContainer.innerHTML = '';
 
-                console.log('Fetching data from:', `${API_BASE_URL}/api/metrics/last-7-days?type=learn`);
+                console.log('Fetching data from:', `${API_BASE_URL}/metrics/last-7-days?type=learn`);
                 
                 // Fetch data from API with type=learn
-                const response = await fetch(`${API_BASE_URL}/api/metrics/last-7-days?type=learn`);
+                const response = await fetch(`${API_BASE_URL}/metrics/last-7-days?type=learn`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -1097,7 +1097,7 @@
 
         async function loadIntentAccuracy(dateStr) {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/metrics/intent-accuracy?date=${dateStr}`);
+                const response = await fetch(`${API_BASE_URL}/metrics/intent-accuracy?date=${dateStr}`);
                 const result = await response.json();
                 
                 if (result.status === 'success' && result.data.intent_accuracy !== null) {
@@ -1486,7 +1486,7 @@
                 fetchBtn.innerHTML = '<span>⏳</span><span>Đang tải...</span>';
                 errorContainer.innerHTML = '';
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/fetch-intent-accuracy`, {
+                const response = await fetch(`${API_BASE_URL}/metrics/fetch-intent-accuracy`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1533,7 +1533,7 @@
                 fetchBtn.innerHTML = '<span>⏳</span><span>Đang tải...</span>';
                 errorContainer.innerHTML = '';
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/fetch-date`, {
+                const response = await fetch(`${API_BASE_URL}/metrics/fetch-date`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

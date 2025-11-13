@@ -506,6 +506,85 @@ def update_intent_accuracy_with_wer(message_id: str, message_data: Dict[str, Any
         conn.close()
 
 
+def update_intent_accuracy_for_date(target_date: date) -> Dict[str, Any]:
+    """
+    Update intent accuracy data for a specific date.
+    Fetches message_ids from DB for the given date, adds pika- prefix, requests API, and updates DB with WER.
+    
+    Args:
+        target_date: The date to update
+    
+    Returns:
+        Dictionary with summary of update operation
+    """
+    logger.info(f"Starting update intent accuracy for date: {target_date}")
+    
+    try:
+        # Step 1: Get all message_ids for the target date
+        logger.info(f"Fetching message_ids for date: {target_date}")
+        message_ids = get_message_ids_for_dates(target_date, target_date)
+        logger.info(f"Found {len(message_ids)} message_ids")
+        
+        if not message_ids:
+            return {
+                "status": "success",
+                "message": f"No message_ids found for {target_date}",
+                "total_message_ids": 0,
+                "updated": 0,
+                "failed": 0,
+                "date": target_date.isoformat()
+            }
+        
+        # Step 2: For each message_id, fetch from API and update DB
+        updated_count = 0
+        failed_count = 0
+        
+        for idx, msg_id in enumerate(message_ids, 1):
+            try:
+                # Fetch message data from API
+                message_data = fetch_message_data_from_api(msg_id)
+                
+                if message_data:
+                    # Update DB with WER
+                    if update_intent_accuracy_with_wer(msg_id, message_data):
+                        updated_count += 1
+                    else:
+                        failed_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Failed to fetch data for message_id: {msg_id}")
+                
+                if idx % 100 == 0:
+                    logger.info(f"Processed {idx}/{len(message_ids)} message_ids... Updated: {updated_count}, Failed: {failed_count}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing message_id {msg_id}: {e}")
+                failed_count += 1
+                continue
+        
+        logger.info(f"Update completed for {target_date}: {updated_count} updated, {failed_count} failed out of {len(message_ids)} total")
+        
+        return {
+            "status": "success",
+            "message": f"Updated {updated_count} records, {failed_count} failed for {target_date}",
+            "total_message_ids": len(message_ids),
+            "updated": updated_count,
+            "failed": failed_count,
+            "date": target_date.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating intent accuracy for date {target_date}: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "total_message_ids": 0,
+            "updated": 0,
+            "failed": 0,
+            "date": target_date.isoformat()
+        }
+
+
 def update_intent_accuracy_last_3_days() -> Dict[str, Any]:
     """
     Update intent accuracy data for the last 3 days (today, today-1, today-2).

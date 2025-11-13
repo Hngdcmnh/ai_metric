@@ -19,6 +19,7 @@ from intent_accuracy import (
     fetch_and_import_intent_accuracy,
     get_intent_accuracy_for_date,
     update_intent_accuracy_last_3_days,
+    update_intent_accuracy_for_date,
     get_intent_accuracy_metrics_for_date_range
 )
 

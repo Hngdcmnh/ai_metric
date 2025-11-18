@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>AI Metric Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -1121,9 +1124,9 @@
                 const startDateStr = startDate.toISOString().split('T')[0];
                 const endDateStr = endDate.toISOString().split('T')[0];
                 
-                console.log(`Fetching from ${API_BASE_URL}/api/metrics/intent-accuracy-metrics?start_date=${startDateStr}&end_date=${endDateStr}`);
+                console.log(`Fetching from ${API_BASE_URL}/metrics/intent-accuracy-metrics?start_date=${startDateStr}&end_date=${endDateStr}`);
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/intent-accuracy-metrics?start_date=${startDateStr}&end_date=${endDateStr}`);
+                const response = await fetch(`${API_BASE_URL}/metrics/intent-accuracy-metrics?start_date=${startDateStr}&end_date=${endDateStr}`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -1366,7 +1369,7 @@
                 document.getElementById('intentAccuracyTotalCount').textContent = '...';
                 document.getElementById('intentAccuracyDetailTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center;">Đang tải...</td></tr>';
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/intent-accuracy-detail?date=${selectedDate}`);
+                const response = await fetch(`${API_BASE_URL}/metrics/intent-accuracy-detail?date=${selectedDate}`);
                 const result = await response.json();
                 
                 if (result.status === 'success') {
@@ -1437,7 +1440,7 @@
                 updateBtn.innerHTML = '<span>⏳</span><span>Đang cập nhật...</span>';
                 errorContainer.innerHTML = '';
                 
-                const response = await fetch(`${API_BASE_URL}/api/metrics/update-intent-accuracy`, {
+                const response = await fetch(`${API_BASE_URL}/metrics/update-intent-accuracy`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

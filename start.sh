@@ -1,107 +1,47 @@
 #!/bin/bash
-
-# Script to start the API server and open dashboard
+# Start script - Build và fix tự động
 # Usage: ./start.sh
 
-PORT=5001
-API_URL="http://localhost:${PORT}"
-
-echo "🚀 Starting Latency Metrics Dashboard..."
+echo "🚀 Starting AI Metric Dashboard..."
 echo ""
 
-# Check if Python is available
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python3 is not installed!"
-    exit 1
-fi
+# Build và start
+echo "1. Building and starting containers..."
+docker compose up -d --build
 
-# Check if port 5001 is already in use
-EXISTING_PID=$(lsof -ti:${PORT} 2>/dev/null)
-if [ ! -z "$EXISTING_PID" ]; then
-    echo "⚠️  Port ${PORT} is already in use (PID: $EXISTING_PID)"
-    echo "   Using existing server..."
-    SERVER_PID=$EXISTING_PID
-else
-    echo "📡 Starting API server on port ${PORT}..."
-    # Start API server in background
-    python3 api_server.py > server.log 2>&1 &
-    SERVER_PID=$!
-    echo "✅ API server started (PID: $SERVER_PID)"
-    echo "   Waiting for server to be ready..."
-    
-    # Wait for server to start and be ready
-    MAX_WAIT=15
-    for i in $(seq 1 $MAX_WAIT); do
-        sleep 1
-        if curl -s "${API_URL}/health" > /dev/null 2>&1; then
-            echo "✅ Server is ready!"
-            break
-        fi
-        if [ $i -eq $MAX_WAIT ]; then
-            echo "❌ Server failed to start after ${MAX_WAIT} seconds"
-            echo "   Check server.log for details:"
-            tail -20 server.log
-            kill $SERVER_PID 2>/dev/null
-            exit 1
-        fi
-        echo -n "."
-    done
-    echo ""
-fi
+# Đợi containers start
+echo "2. Waiting for containers..."
+sleep 10
 
-# Final check if server is responding
-if curl -s "${API_URL}/health" > /dev/null 2>&1; then
-    echo ""
-    echo "✅ API server is running on ${API_URL}"
-    echo ""
-    
-    # Get the absolute path to dashboard.html
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    DASHBOARD_PATH="${SCRIPT_DIR}/dashboard.html"
-    
-    echo "🌐 Opening dashboard in your browser..."
-    echo ""
-    
-    # Open dashboard in default browser
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        open "${DASHBOARD_PATH}"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux
-        xdg-open "file://${DASHBOARD_PATH}" 2>/dev/null || sensible-browser "file://${DASHBOARD_PATH}" 2>/dev/null
-    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
-        # Windows
-        start "file://${DASHBOARD_PATH}"
-    else
-        echo "⚠️  Please open dashboard.html manually in your browser"
-    fi
-    
-    echo "📊 Dashboard: file://${DASHBOARD_PATH}"
-    echo "🔗 API Server: ${API_URL}"
-    echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✅ Dashboard is ready!"
-    echo "   Press Ctrl+C to stop the server"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    
-    # If we started the server, wait for it. Otherwise just exit
-    if [ -z "$EXISTING_PID" ]; then
-        # Trap Ctrl+C to cleanup
-        trap "echo ''; echo '🛑 Stopping server...'; kill $SERVER_PID 2>/dev/null; exit 0" INT TERM
-        # Wait for server process
-        wait $SERVER_PID
-    else
-        echo "Server is running in background (PID: $SERVER_PID)"
-        echo "To stop it, run: kill $SERVER_PID"
-    fi
-else
-    echo "❌ API server is not responding"
-    echo "   Check server.log for errors:"
-    tail -20 server.log 2>/dev/null || echo "   No server.log found"
-    if [ ! -z "$SERVER_PID" ] && [ -z "$EXISTING_PID" ]; then
-        kill $SERVER_PID 2>/dev/null
-    fi
-    exit 1
-fi
+# Fix frontend
+echo "3. Fixing frontend config..."
+docker cp frontend/nginx.conf latency-metrics-frontend:/etc/nginx/conf.d/default.conf 2>/dev/null
+docker exec latency-metrics-frontend nginx -t >/dev/null 2>&1 && \
+    docker exec latency-metrics-frontend nginx -s reload 2>/dev/null && \
+    echo "   ✓ Frontend config updated"
 
+# Fix backend
+echo "4. Fixing backend code..."
+docker cp backend/app.py latency-metrics-backend:/app/app.py 2>/dev/null
+docker cp backend/intent_accuracy.py latency-metrics-backend:/app/intent_accuracy.py 2>/dev/null
+docker compose restart backend >/dev/null 2>&1
+echo "   ✓ Backend code updated"
+
+# Đợi services ready
+echo "5. Waiting for services to be ready..."
+sleep 15
+
+# Test
+echo ""
+echo "6. Testing services..."
+curl -f http://localhost:5002/health >/dev/null 2>&1 && echo "   ✓ Backend OK" || echo "   ✗ Backend FAILED"
+curl -f http://localhost:26003/ >/dev/null 2>&1 && echo "   ✓ Frontend OK" || echo "   ✗ Frontend FAILED"
+
+echo ""
+echo "✅ Done!"
+echo ""
+echo "Services running:"
+echo "  📊 Frontend: http://103.253.20.30:26003"
+echo "  🔧 Backend:  http://103.253.20.30:5002"
+echo ""
+docker compose ps
